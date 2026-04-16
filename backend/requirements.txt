@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+pytest
+httpx
+google-cloud-logging
+google-cloud-firestore
+google-cloud-pubsub
+firebase-admin
+slowapi
