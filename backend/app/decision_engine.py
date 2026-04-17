@@ -1,13 +1,56 @@
 import heapq
 import logging
 import random
+from functools import lru_cache
 from typing import List, Dict, Optional, Tuple
 
 from app.graph import VENUE_GRAPH, EXIT_NODES, RESTROOM_NODES, MERCH_NODES, FOOD_NODES, SCENIC_NODES
 from app.models import RouteRequest, RouteResponse
 from app.state import state
+from app.services.gcp import gcp_services
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=256)
+def _cached_graph_search(start: str, end: str, accessible_mode: bool) -> Optional[Tuple[str, ...]]:
+    """
+    LRU-cached wrapper around the physical graph traversal for standard
+    (non-emergency, non-dynamic) routes.
+
+    Caches the optimal path as a tuple of node IDs so repeated requests for
+    the same start/end pair avoid re-running the heap search entirely.
+    Cache is keyed on (start, end, accessible_mode) since these are the only
+    parameters that affect the graph topology. Congestion weights are applied
+    by the caller after the path is retrieved.
+
+    Args:
+        start:           Source node ID.
+        end:             Destination node ID.
+        accessible_mode: If True, stair edges were excluded.
+
+    Returns:
+        Ordered tuple of node IDs, or None if no path exists.
+    """
+    # Build a minimal Dijkstra limited to topology only (weight=1 per hop).
+    # This gives the shortest physical hop count, used as the cache value.
+    queue: List[Tuple[float, List[str]]] = [(0.0, [start])]
+    visited = set()
+    while queue:
+        cost, path = heapq.heappop(queue)
+        current = path[-1]
+        if current in visited:
+            continue
+        visited.add(current)
+        if current == end:
+            return tuple(path)
+        for neighbor, edge_data in VENUE_GRAPH.get(current, {}).items():
+            if neighbor in visited:
+                continue
+            if accessible_mode and edge_data.get("stairs", False):
+                continue
+            heapq.heappush(queue, (cost + 1, path + [neighbor]))
+    return None
 
 # ---------------------------------------------------------------------------
 # Internal Graph Search — K-Shortest Diverse Paths
@@ -336,6 +379,24 @@ def calculate_best_route(req: RouteRequest) -> RouteResponse:
         req.start_node, target_node, len(recommended_route),
         f"{round(best_route['cost'])} min", conf
     )
+
+    # --- Vertex AI: Append a live Gemini-generated safety tip ---
+    # Calculates the average density along the recommended path so Gemini
+    # can tailor the tip to actual crowd conditions at this moment.
+    avg_density = sum(
+        state.congestion_state.get(n, 1.0) for n in recommended_route
+    ) / len(recommended_route)
+
+    ai_tip = gcp_services.get_ai_route_insight(
+        start=req.start_node,
+        end=target_node,
+        weather=state.weather,
+        avg_density=avg_density,
+        emergency=req.emergency_mode or state.mass_exodus,
+    )
+    if ai_tip:
+        reasoning_parts.append(f"💡 AI Tip: {ai_tip}")
+        logger.info("Vertex AI tip appended to route response.")
 
     return RouteResponse(
         recommended_route=recommended_route,

@@ -290,8 +290,34 @@ export default function Home() {
 
               <div style={{ marginTop: "2rem", padding: "24px", background: "#f8fafc", borderRadius: "16px", border: "1px solid var(--border-light)" }}>
                 <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "8px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em" }}>Why this way?</p>
-                <p style={{ fontSize: "1rem", color: "var(--text-primary)", margin: 0, fontWeight: 500, lineHeight: 1.6, marginTop: "8px" }}>{routeResult.reasoning}</p>
+                <p style={{ fontSize: "1rem", color: "var(--text-primary)", margin: 0, fontWeight: 500, lineHeight: 1.6, marginTop: "8px" }}>
+                  {routeResult.reasoning.split("💡 AI Tip:")[0].trim()}
+                </p>
               </div>
+
+              {routeResult.reasoning.includes("💡 AI Tip:") && (
+                <div style={{
+                  marginTop: "1.5rem", padding: "20px 24px",
+                  background: "linear-gradient(135deg, rgba(66,133,244,0.08), rgba(52,168,83,0.08))",
+                  border: "1px solid rgba(66,133,244,0.25)",
+                  borderLeft: "4px solid #4285F4",
+                  borderRadius: "12px",
+                  display: "flex", alignItems: "flex-start", gap: "14px"
+                }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: "2px" }}>
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="#4285F4" stroke="#4285F4" strokeWidth="1.5" strokeLinejoin="round"/>
+                  </svg>
+                  <div>
+                    <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "#4285F4", letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 6px 0" }}>
+                      Google AI — Powered by Gemini
+                    </p>
+                    <p style={{ fontSize: "0.96rem", color: "var(--text-primary)", margin: 0, fontWeight: 500, lineHeight: 1.6 }}>
+                      {routeResult.reasoning.split("💡 AI Tip:")[1]?.trim()}
+                    </p>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </div>
