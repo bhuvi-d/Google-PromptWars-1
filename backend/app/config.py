@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     FIRESTORE_THROTTLE_SECONDS: float = 5.0
     BIGQUERY_DATASET: str = "venue_analytics"
     BIGQUERY_TABLE: str = "telemetry_history"
+    PUB_SUB_TOPIC: str = "venue-telemetry-topic"
 
     model_config = SettingsConfigDict(
         env_file=".env",
