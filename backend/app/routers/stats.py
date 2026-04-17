@@ -3,7 +3,7 @@ import logging
 import json
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from app.state import state
 from app.graph import EXIT_NODES
@@ -15,33 +15,26 @@ router = APIRouter()
 
 def process_stats_tick() -> dict:
     """
-    Computes one telemetry tick of venue state.
-
-    Fluctuates attendance and congestion values across all graph nodes,
-    simulating real crowd dynamics. During mass-exodus, exit nodes fill
-    up rapidly. Publishes the snapshot to GCP Firestore via gcp_services.
-
-    Returns:
-        dict: Current attendance, mass_exodus flag, and per-node heatmap data.
+    Computes a single telemetry snapshot of the venue state.
+    Simulates crowd dynamics, weather impacts, and attendance fluctuations.
     """
     # Fluctuate attendance
     diff = random.randint(-15, 25)
     if state.mass_exodus:
         diff -= random.randint(150, 450)
-    state.current_attendance = max(0, state.current_attendance + diff)
-    state.current_attendance = min(60000, state.current_attendance)
+    state.current_attendance = max(0, min(60000, state.current_attendance + diff))
 
     # Refill safeguard — prevents venue going permanently empty in simulation
     if state.current_attendance == 0 and not state.mass_exodus:
         state.current_attendance = 45000
 
     heatmap_data = []
-
     for node in state.congestion_state:
         old_val = state.congestion_state[node]
         state.old_congestion_state[node] = old_val
 
         if state.mass_exodus and node in EXIT_NODES:
+            # Rapid fill during exodus
             state.congestion_state[node] = min(3.0, state.congestion_state[node] + 0.1)
         else:
             state.congestion_state[node] += random.uniform(-0.1, 0.1)
@@ -67,45 +60,41 @@ def process_stats_tick() -> dict:
     snapshot = {
         "attendance": state.current_attendance,
         "mass_exodus": state.mass_exodus,
+        "weather": state.weather,
         "heatmap": heatmap_data
     }
 
-    # Google Cloud Integration: Publish telemetry snapshot to Firestore
-    # Every tick is persisted when USE_REAL_GCP=true, enabling cross-instance
-    # state sharing and historical analysis in GCP.
-    gcp_services.publish_telemetry("stats_tick", {
-        "attendance": state.current_attendance,
-        "mass_exodus": state.mass_exodus,
-        "weather": state.weather,
-    })
+    # Live Publish: Firestore for real-time client state synchronization
+    gcp_services.publish_telemetry("stats_tick", snapshot)
 
     return snapshot
 
 
-@router.get("")
-async def get_stats_polling():
+@router.get("", summary="Poll venue telemetry")
+async def get_stats_polling(background_tasks: BackgroundTasks):
     """
-    Fallback HTTP polling endpoint for venue telemetry.
-    Returns a single snapshot of current attendance, congestion, and exodus state.
+    HTTP Poll: Returns a snapshot and triggers a background BigQuery analytical log.
+    Efficiently offloads durable logging to background tasks to maintain 
+    low-latency responses.
     """
-    logger.info("Stats polled via HTTP GET /api/stats")
-    return process_stats_tick()
+    snapshot = process_stats_tick()
+    # Efficiency win: Using BackgroundTasks ensures API response is not 
+    # blocked by BigQuery IO.
+    background_tasks.add_task(gcp_services.log_telemetry_batch, snapshot)
+    return snapshot
 
 
-@router.get("/stream")
-async def stream_stats():
+@router.get("/stream", summary="SSE telemetry stream")
+async def stream_stats(background_tasks: BackgroundTasks):
     """
-    Server-Sent Events (SSE) streaming endpoint for real-time telemetry.
-
-    Delivers a continuous live feed of venue state to connected clients.
-    Replaces interval HTTP polling, reducing network overhead by ~90% under
-    high concurrency. Clients reconnect automatically on disconnect.
+    SSE Stream: Continuous telemetry feed with background analytics streaming.
     """
     async def event_generator():
-        logger.info("SSE client connected to /api/stats/stream")
         while True:
-            data = process_stats_tick()
-            yield f"data: {json.dumps(data)}\n\n"
+            snapshot = process_stats_tick()
+            # Log to BigQuery in background on every tick for historical analytics
+            background_tasks.add_task(gcp_services.log_telemetry_batch, snapshot)
+            yield f"data: {json.dumps(snapshot)}\n\n"
             await asyncio.sleep(2.0)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
