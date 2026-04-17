@@ -12,6 +12,7 @@ import { AdminPanel } from "../components/AdminPanel";
 interface TelemetryPayload {
   attendance: number;
   mass_exodus: boolean;
+  weather: string;
   heatmap: HeatmapNode[];
 }
 
@@ -69,6 +70,7 @@ export default function Home() {
           setHeatmap(data.heatmap);
           setAttendance(data.attendance);
           setMassExodus(data.mass_exodus);
+          if (data.weather) setWeather(data.weather);
         } catch {
           // Silently ignore malformed SSE frames
         }
@@ -141,6 +143,7 @@ export default function Home() {
   const toggleExodus = useCallback(async () => {
     const nextStr = massExodus ? "inactive" : "active";
     try {
+      setMassExodus(nextStr === "active");
       await fetch(`${API_BASE}/api/admin/exodus?state_val=${nextStr}`, {
         method: "POST", headers: adminHeaders,
       });
