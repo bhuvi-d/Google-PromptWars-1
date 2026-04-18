@@ -105,8 +105,9 @@ def dijkstra_k_shortest(
                         break
 
             if is_diverse or req.emergency_mode:
-                destination_queue = state.congestion_state.get(end, 1.0) * 5.0
-                routes_found.append({"path": path, "cost": cost + destination_queue})
+                # Clamping destination queue weight to prevent overflow in long-running simulations
+                destination_queue = min(50.0, state.congestion_state.get(end, 1.0) * 5.0)
+                routes_found.append({"path": path, "cost": max(0.1, cost + destination_queue)})
             continue
 
         for neighbor, edge_data in graph.get(current, {}).items():

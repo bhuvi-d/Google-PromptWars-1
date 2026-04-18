@@ -154,7 +154,11 @@ class GCPServiceBridge:
     async def publish_telemetry_event(self, event_type: str, payload: Dict[str, Any]) -> None:
         """
         Publishes a telemetry event to the Pub/Sub message bus.
-        This provides the highest level of architectural decoupling.
+        
+        ARCHITECTURE PATTERN: Fan-out Decoupling.
+        By publishing to a central topic, we allow downstream analytical services
+        (BigQuery, Cloud Functions) to consume venue events without increasing 
+        the latency of the primary routing API.
         
         Args:
             event_type: Label for the event (e.g. 'stats_tick').

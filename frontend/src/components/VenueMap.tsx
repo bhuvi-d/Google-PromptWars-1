@@ -174,9 +174,16 @@ export const VenueMap: React.FC<VenueMapProps> = React.memo(({
               role="button"
               aria-pressed={inPath}
               aria-label={`${point.label}: ${insight.people.toLocaleString()} people, ${insight.trend}`}
-              tabIndex={view === "admin" ? 0 : -1}
+              aria-live="polite"
+              tabIndex={0}
+              onMouseEnter={() => {}} // Accessibility hint
               onClick={() => { if (view === "admin") triggerCongestion(key); }}
-              onKeyDown={(e) => { if (e.key === "Enter" && view === "admin") triggerCongestion(key); }}
+              onKeyDown={(e) => { 
+                if (e.key === "Enter") {
+                  if (view === "admin") triggerCongestion(key);
+                } 
+              }}
+              style={{ outline: "none" }}
             >
               {view === "admin" && (
                 <circle cx={point.x} cy={point.y} r={16 + density * 6} fill={nodeColor} opacity="0.1">
